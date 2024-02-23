@@ -38,7 +38,6 @@ from adetailer.traceback import rich_traceback
 from adetailer.ui import WebuiInfo, adui, ordinal, suffix
 from controlnet_ext import ControlNetExt, controlnet_exists, get_cn_models
 from controlnet_ext.restore import (
-    CNHijackRestore,
     cn_allow_script_control,
 )
 from modules import images, paths, safe, script_callbacks, scripts, shared
@@ -111,7 +110,6 @@ class AfterDetailerScript(scripts.Script):
     def __init__(self):
         super().__init__()
         self.ultralytics_device = self.get_ultralytics_device()
-
         self.controlnet_ext = None
 
     def __repr__(self):
@@ -163,7 +161,7 @@ class AfterDetailerScript(scripts.Script):
                     file=sys.stderr,
                 )
 
-    def update_controlnet_args(self, p, args: ADetailerArgs) -> None:
+    def get_controlnet_script_args(self, p, args: ADetailerArgs) -> None:
         if self.controlnet_ext is None:
             self.init_controlnet_ext()
 
@@ -172,13 +170,13 @@ class AfterDetailerScript(scripts.Script):
             and self.controlnet_ext.cn_available
             and args.ad_controlnet_model != "None"
         ):
-            self.controlnet_ext.update_scripts_args(
+            return self.controlnet_ext.get_controlnet_script_args(
                 p,
                 model=args.ad_controlnet_model,
                 module=args.ad_controlnet_module,
                 weight=args.ad_controlnet_weight,
                 guidance_start=args.ad_controlnet_guidance_start,
-                guidance_end=args.ad_controlnet_guidance_end,
+                guidance_end=args.ad_controlnet_guidance_end
             )
 
     def is_ad_enabled(self, *args_) -> bool:
@@ -452,19 +450,6 @@ class AfterDetailerScript(scripts.Script):
         script_runner.alwayson_scripts = filtered_alwayson
         return script_runner, script_args
 
-    def disable_controlnet_units(
-        self, script_args: list[Any] | tuple[Any, ...]
-    ) -> None:
-        for obj in script_args:
-            if "controlnet" in obj.__class__.__name__.lower():
-                if hasattr(obj, "enabled"):
-                    obj.enabled = False
-                if hasattr(obj, "input_mode"):
-                    obj.input_mode = getattr(obj.input_mode, "SIMPLE", "simple")
-
-            elif isinstance(obj, dict) and "module" in obj:
-                obj["enabled"] = False
-
     def get_i2i_p(self, p, args: ADetailerArgs, image):
         seed, subseed = self.get_seed(p)
         width, height = self.get_width_height(p, args)
@@ -516,14 +501,6 @@ class AfterDetailerScript(scripts.Script):
         i2i.scripts, i2i.script_args = self.script_filter(p, args)
         i2i._ad_disabled = True
         i2i._ad_inner = True
-
-        if args.ad_controlnet_model != "Passthrough":
-            self.disable_controlnet_units(i2i.script_args)
-
-        if args.ad_controlnet_model not in ["None", "Passthrough"]:
-            self.update_controlnet_args(i2i, args)
-        elif args.ad_controlnet_model == "None":
-            i2i.control_net_enabled = False
 
         return i2i
 
@@ -721,6 +698,11 @@ class AfterDetailerScript(scripts.Script):
             p2.seed = self.get_each_tap_seed(seed, j)
             p2.subseed = self.get_each_tap_seed(subseed, j)
 
+            if args.ad_controlnet_model not in "None":
+                self.get_controlnet_script_args(p2, args)
+            else:
+                p2.control_net_enabled = False
+
             try:
                 processed = process_images(p2)
             except NansException as e:
@@ -757,7 +739,7 @@ class AfterDetailerScript(scripts.Script):
                 p.scripts.postprocess(copy(p), dummy)
 
         is_processed = False
-        with CNHijackRestore(), pause_total_tqdm(), cn_allow_script_control():
+        with pause_total_tqdm(), cn_allow_script_control():
             for n, args in enumerate(arg_list):
                 if args.ad_model == "None":
                     continue
@@ -776,7 +758,6 @@ class AfterDetailerScript(scripts.Script):
                 p.scripts.process(copy_p)
 
         self.write_params_txt(params_txt_content)
-
 
 def on_after_component(component, **_kwargs):
     global txt2img_submit_button, img2img_submit_button
