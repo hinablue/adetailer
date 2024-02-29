@@ -604,20 +604,6 @@ class AfterDetailerScript(scripts.Script):
             )
 
     @staticmethod
-    def need_call_process(p) -> bool:
-        if p.scripts is None:
-            return False
-        i = p.batch_index
-        bs = p.batch_size
-        return i == bs - 1
-
-    @staticmethod
-    def need_call_postprocess(p) -> bool:
-        if p.scripts is None:
-            return False
-        return p.batch_index == 0
-
-    @staticmethod
     def get_i2i_init_image(p, pp):
         if getattr(p, "_ad_skip_img2img", False):
             return p.init_images[0]
