@@ -450,6 +450,19 @@ class AfterDetailerScript(scripts.Script):
         script_runner.alwayson_scripts = filtered_alwayson
         return script_runner, script_args
 
+    def disable_controlnet_units(
+        self, script_args: list[Any] | tuple[Any, ...]
+    ) -> None:
+        for obj in script_args:
+            if "controlnet" in obj.__class__.__name__.lower():
+                if hasattr(obj, "enabled"):
+                    obj.enabled = False
+                if hasattr(obj, "input_mode"):
+                    obj.input_mode = getattr(obj.input_mode, "SIMPLE", "simple")
+
+            elif isinstance(obj, dict) and "module" in obj:
+                obj["enabled"] = False
+
     def get_i2i_p(self, p, args: ADetailerArgs, image):
         seed, subseed = self.get_seed(p)
         width, height = self.get_width_height(p, args)
@@ -501,6 +514,14 @@ class AfterDetailerScript(scripts.Script):
         i2i.scripts, i2i.script_args = self.script_filter(p, args)
         i2i._ad_disabled = True
         i2i._ad_inner = True
+
+        if args.ad_controlnet_model != "Passthrough":
+            self.disable_controlnet_units(i2i.script_args)
+
+        if args.ad_controlnet_model not in ["None", "Passthrough"]:
+            self.get_controlnet_script_args(i2i, args)
+        elif args.ad_controlnet_model == "None":
+            i2i.control_net_enabled = False
 
         return i2i
 
@@ -698,12 +719,10 @@ class AfterDetailerScript(scripts.Script):
             p2.seed = self.get_each_tap_seed(seed, j)
             p2.subseed = self.get_each_tap_seed(subseed, j)
 
-            if args.ad_controlnet_model not in "None":
-                self.get_controlnet_script_args(p2, args)
-            else:
-                p2.control_net_enabled = False
-
             try:
+                msg = f"[-] ADetailer: {p2.cfg_scale}, {p2.steps}, {p2.sampler_name} settings."
+                print(msg, file=sys.stderr)
+
                 processed = process_images(p2)
             except NansException as e:
                 msg = f"[-] ADetailer: 'NansException' occurred with {ordinal(n + 1)} settings.\n{e}"
@@ -733,11 +752,6 @@ class AfterDetailerScript(scripts.Script):
         arg_list = self.get_args(p, *args_)
         params_txt_content = Path(paths.data_path, "params.txt").read_text("utf-8")
 
-        if self.need_call_postprocess(p):
-            dummy = Processed(p, [], p.seed, "")
-            with preseve_prompts(p):
-                p.scripts.postprocess(copy(p), dummy)
-
         is_processed = False
         with pause_total_tqdm(), cn_allow_script_control():
             for n, args in enumerate(arg_list):
@@ -749,13 +763,6 @@ class AfterDetailerScript(scripts.Script):
             self.save_image(
                 p, init_image, condition="ad_save_images_before", suffix="-ad-before"
             )
-
-        if self.need_call_process(p):
-            with preseve_prompts(p):
-                copy_p = copy(p)
-                if hasattr(p.scripts, "before_process"):
-                    p.scripts.before_process(copy_p)
-                p.scripts.process(copy_p)
 
         self.write_params_txt(params_txt_content)
 
