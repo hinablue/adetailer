@@ -44,9 +44,9 @@ def run_pip(*args):
 def install():
     deps = [
         # requirements
-        ("ultralytics", "8.1.18", None),
-        ("mediapipe", "0.10.9", None),
-        ("rich", "13.0.0", None),
+        ("ultralytics", "8.1.19", None),
+        ("mediapipe", "0.10.10", None),
+        ("rich", "13.7.1", None),
         # mediapipe
         ("protobuf", "3.20", "3.9999"),
     ]

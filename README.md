@@ -2,6 +2,12 @@
 
 ADetailer is a extension for stable diffusion webui, similar to Detection Detailer, except it uses ultralytics instead of the mmdet.
 
+# MODIFIED FOR WEBUI-FORGE
+
+I modified the original repo and make it work fine in the webui-forge, including the ControlNet part.
+
+---
+
 ## Install
 
 (from Mikubill/sd-webui-controlnet)

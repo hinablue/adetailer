@@ -41,7 +41,6 @@ else:
         "depth": ["depth_midas", "depth_hand_refiner"],
     }
 
-
 class Widgets(SimpleNamespace):
     def tolist(self):
         return [getattr(self, attr) for attr in ALL_ARGS.attrs]

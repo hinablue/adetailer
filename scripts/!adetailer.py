@@ -43,7 +43,6 @@ from controlnet_ext import (
     get_cn_models,
 )
 from controlnet_ext.restore import (
-    CNHijackRestore,
     cn_allow_script_control,
 )
 from modules import images, paths, safe, script_callbacks, scripts, shared
@@ -116,7 +115,6 @@ class AfterDetailerScript(scripts.Script):
     def __init__(self):
         super().__init__()
         self.ultralytics_device = self.get_ultralytics_device()
-
         self.controlnet_ext = None
 
     def __repr__(self):
@@ -765,24 +763,31 @@ class AfterDetailerScript(scripts.Script):
         arg_list = self.get_args(p, *args_)
         params_txt_content = Path(paths.data_path, "params.txt").read_text("utf-8")
 
-        if self.need_call_postprocess(p):
+        if self.need_call_postprocess(p) and controlnet_type != "forge":
             dummy = Processed(p, [], p.seed, "")
             with preseve_prompts(p):
                 p.scripts.postprocess(copy(p), dummy)
 
         is_processed = False
-        with CNHijackRestore(), pause_total_tqdm(), cn_allow_script_control():
-            for n, args in enumerate(arg_list):
-                if args.ad_model == "None":
-                    continue
-                is_processed |= self._postprocess_image_inner(p, pp, args, n=n)
+        if controlnet_type != "forge":
+            with CNHijackRestore(), pause_total_tqdm(), cn_allow_script_control():
+                for n, args in enumerate(arg_list):
+                    if args.ad_model == "None":
+                        continue
+                    is_processed |= self._postprocess_image_inner(p, pp, args, n=n)
+        else:
+            with pause_total_tqdm(), cn_allow_script_control():
+                for n, args in enumerate(arg_list):
+                    if args.ad_model == "None":
+                        continue
+                    is_processed |= self._postprocess_image_inner(p, pp, args, n=n)
 
         if is_processed and not getattr(p, "_ad_skip_img2img", False):
             self.save_image(
                 p, init_image, condition="ad_save_images_before", suffix="-ad-before"
             )
 
-        if self.need_call_process(p):
+        if self.need_call_process(p) and controlnet_type != "forge":
             with preseve_prompts(p):
                 copy_p = copy(p)
                 if hasattr(p.scripts, "before_process"):
@@ -790,7 +795,6 @@ class AfterDetailerScript(scripts.Script):
                 p.scripts.process(copy_p)
 
         self.write_params_txt(params_txt_content)
-
 
 def on_after_component(component, **_kwargs):
     global txt2img_submit_button, img2img_submit_button
